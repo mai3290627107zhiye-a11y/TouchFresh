@@ -20,15 +20,57 @@
     return s;
   }
   function newId() { return "c" + Date.now().toString(36) + randHex(4); }
+
+  // 云端出厂档案（演示：按 UID 稳定映射，真实方案由产线写入云端）
+  var FACTORY_POOL = [
+    { ranch: "内蒙古 · 乌兰察布牧场", plant: "天津 · 三厂" },
+    { ranch: "黑龙江 · 齐齐哈尔牧场", plant: "黑龙江 · 一厂" },
+    { ranch: "新西兰 · 怀卡托牧场", plant: "新西兰 · 奥克兰工厂" }
+  ];
+  function hashOf(str) {
+    var h = 0, t = String(str || "X");
+    for (var i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+    return h;
+  }
+  function factoryOf(uid) {
+    var h = hashOf(uid), f = FACTORY_POOL[h % FACTORY_POOL.length];
+    return { ranch: f.ranch, plant: f.plant, report: "IN-" + (2026000 + (h % 9000)) };
+  }
+  function fmtYMD(ts) {
+    if (!ts) return "—";
+    var d = new Date(ts);
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+  /** 补齐老数据缺失的云端字段；返回补齐后的罐 */
+  function ensureMeta(c) {
+    if (c.queries === undefined || c.queries === null) c.queries = 1;
+    if (!c.producedAt) {
+      var t = c.made ? Date.parse(c.made + "T00:00:00") : NaN;
+      c.producedAt = (isNaN(t) ? Date.now() - 20 * DAY : t) + 2 * DAY;
+    }
+    var f = factoryOf(c.raw || c.uid || "X");
+    if (!c.ranch) c.ranch = f.ranch;
+    if (!c.plant) c.plant = f.plant;
+    if (!c.report) c.report = f.report;
+    return c;
+  }
   function makeCan() {
-    var u = randHex(8), d = new Date();
+    var u = randHex(8), uid = u.slice(0, 4) + "…" + u.slice(6);
+    // 生产 → 出厂 → 今天：让「流通时长」有真实含义
+    var madeTs = Date.now() - Math.round(12 + Math.random() * 26) * DAY;
+    var producedTs = madeTs + Math.round(1 + Math.random() * 3) * DAY;
+    var d = new Date(madeTs);
+    var f = factoryOf(u);
     return {
       id: newId(),
-      uid: u.slice(0, 4) + "…" + u.slice(6),
+      uid: uid,
       raw: u,
       batch: "" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) +
              "-" + "ABCDEF"[Math.floor(Math.random() * 6)] + (1 + Math.floor(Math.random() * 9)),
       made: d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()),
+      producedAt: producedTs,
+      ranch: f.ranch, plant: f.plant, report: f.report,
+      queries: 0,
       openedAt: null, archived: false, archivedAt: null, reason: null
     };
   }
@@ -101,6 +143,8 @@
     } catch (e) {
       out.cans = [makeCan()];
     }
+    out.cans.forEach(function (c) { ensureMeta(c); });
+    out.syncedAt = Date.now();
     return out;
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
@@ -340,11 +384,15 @@
   }
 
   function addCan(code) {
+    var madeTs = code.made ? Date.parse(code.made + "T00:00:00") : (Date.now() - 20 * DAY);
+    if (isNaN(madeTs)) madeTs = Date.now() - 20 * DAY;
     var c = {
       id: newId(), uid: code.uid, raw: code.raw || "",
-      batch: code.batch || "", made: code.made || "",
-      openedAt: null, archived: false, archivedAt: null, reason: null
+      batch: code.batch || "", made: code.made || fmtYMD(madeTs),
+      producedAt: madeTs + 2 * DAY,
+      openedAt: null, archived: false, archivedAt: null, reason: null, queries: 0
     };
+    ensureMeta(c);
     S.cans.unshift(c);
     save(); stopScan();
     toast("已添加这一罐", c.uid + (c.batch ? " · 批次 " + c.batch : "") +
@@ -471,7 +519,11 @@
   }
 
   /* ---------------- 罐操作 ---------------- */
-  function openCan(id) { detailId = id; go("records"); }
+  function openCan(id) {
+    var c = byId(id);
+    if (c) { c.queries = (c.queries || 0) + 1; save(); }   // 一次溯源查询
+    detailId = id; go("records");
+  }
   function recordOpen(id) {
     var c = byId(id); if (!c) return;
     c.openedAt = Date.now(); c.archived = false; c.reason = null; c.archivedAt = null;
@@ -703,6 +755,10 @@
       (n !== null ? '<div class="kv"><span class="k">已开天数</span><span class="v">' + n + " 天</span></div>" : "") +
       (c.openedAt ? '<div class="kv"><span class="k">建议用完</span><span class="v">' +
         fmt(expiryOf(c)) + "</span></div>" : "") +
+      (c.producedAt && c.openedAt
+        ? '<div class="kv"><span class="k">流通时长</span><span class="v">' +
+          Math.max(0, Math.round((c.openedAt - c.producedAt) / DAY)) + " 天（出厂 → 开罐）</span></div>"
+        : "") +
       (c.archivedAt ? '<div class="kv"><span class="k">归档时间</span><span class="v">' +
         fmt(new Date(c.archivedAt)) + "</span></div>" : "") +
       '<div class="acts" style="margin-top:.6rem">' +
@@ -711,17 +767,24 @@
       '<button class="btn ghost" data-delete="' + c.id + '">删除这条记录</button>' +
       "</div>";
 
+    var qn2 = c.queries || 1;
     var right = '<div class="sect">溯源信息</div>' +
-      '<div class="kv"><span class="k">牧场</span><span class="v">' + esc(S.ranch) + "</span></div>" +
-      '<div class="kv"><span class="k">工厂</span><span class="v">' + esc(S.plant) + "</span></div>" +
+      '<div class="kv"><span class="k">档案来源</span><span class="v cloudtag">云端档案 · 已同步</span></div>' +
+      '<div class="kv"><span class="k">出厂时间</span><span class="v">' + fmtYMD(c.producedAt) + "</span></div>" +
+      '<div class="kv"><span class="k">牧场</span><span class="v">' + esc(c.ranch) + "</span></div>" +
+      '<div class="kv"><span class="k">工厂</span><span class="v">' + esc(c.plant) + "</span></div>" +
       '<div class="kv"><span class="k">生产日期</span><span class="v">' + esc(c.made || "—") + "</span></div>" +
       '<div class="kv"><span class="k">批次</span><span class="v mono">' + esc(c.batch || "—") + "</span></div>" +
-      '<div class="link" id="inReport"><span>本批次检验报告</span><span class="arw">›</span></div>' +
+      '<div class="link" id="inReport"><span>检验报告 ' + esc(c.report || "") + '</span><span class="arw">›</span></div>' +
       '<div class="sect">真伪校验</div>' +
-      '<div class="kv"><span class="k">首次激活时间</span><span class="v">' +
-        (c.openedAt ? fmt(new Date(c.openedAt)) : "尚未激活") + "</span></div>" +
-      '<div class="kv"><span class="k">查询次数</span><span class="v">1 次 · 正常</span></div>' +
-      '<div class="alert ok">本罐为首次查询，与生产批次、销售区域匹配。</div>' +
+      '<div class="kv"><span class="k">首次激活</span><span class="v">' +
+        (c.openedAt ? fmt(new Date(c.openedAt)) : "尚未激活") + "　<i>云端记录</i></span></div>" +
+      '<div class="kv"><span class="k">查询次数</span><span class="v">' + qn2 + " 次 · " +
+        (qn2 > 3 ? "偏多" : "正常") + "</span></div>" +
+      (qn2 > 3
+        ? '<div class="alert">本罐码已被查询 ' + qn2 + " 次，明显高于常规。" +
+          "若非家人重复查看，请警惕标签被复制或转移。</div>"
+        : '<div class="alert ok">查询次数在正常范围，与生产批次、销售区域匹配。</div>') +
       '<div class="alert dim">若同一罐码被多次识别，页面会弹出重复识别警告 —— ' +
       "这通常意味着标签被转移，或家人重复登记。</div>";
     return '<div class="grid2"><div class="col">' + left + "</div>" +
@@ -1394,7 +1457,8 @@
         var hit = findCan(c.raw, c.uid);
         if (!hit) {
           hit = { id: newId(), uid: c.uid, raw: c.raw, batch: c.batch || "", made: c.made || "",
-                  openedAt: null, archived: false, archivedAt: null, reason: null };
+                  openedAt: null, archived: false, archivedAt: null, reason: null, queries: 0 };
+          ensureMeta(hit);
           S.cans.unshift(hit);
         }
         if (q.d !== undefined) {

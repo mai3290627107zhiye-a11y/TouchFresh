@@ -1,5 +1,5 @@
 /* 一碰知鲜 · 离线缓存（仅在 http/https 下注册） */
-var CACHE = "touchfresh-v2";
+var CACHE = "touchfresh-v3";
 var ASSETS = [
   "./",
   "index.html",
@@ -16,7 +16,7 @@ self.addEventListener("install", function (e) {
   e.waitUntil(
     caches.open(CACHE).then(function (c) {
       return Promise.all(ASSETS.map(function (u) {
-        return c.add(u).catch(function () {});
+        return c.add(new Request(u, { cache: "reload" })).catch(function () {});
       }));
     }).then(function () { return self.skipWaiting(); })
   );

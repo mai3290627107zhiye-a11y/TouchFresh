@@ -736,3 +736,8 @@ html[data-theme="dark"] .myth .x{color:#E8A79C}
 .gart-calc .gc-row.hot{border-color:var(--accent)}
 .gart-calc .gc-row.hot span{color:var(--accent)}
 .gart-calc .gc-eq{color:#5C7A96; font-size:1rem}
+
+
+/* 云端档案标记 */
+.kv .v.cloudtag{color:var(--teal); font-weight:600}
+.kv .v i{font-style:normal; font-size:.66rem; color:var(--muted); margin-left:.22rem}
