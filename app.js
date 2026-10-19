@@ -32,6 +32,17 @@
     for (var i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
     return h;
   }
+  /** 激活码：由罐码派生，6 位；实际产品印在罐盖金属面二维码下方 */
+  function actCodeOf(raw) {
+    var h = hashOf(String(raw || "X") + "TOUCHFRESH");
+    var cs = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    var out = "";
+    for (var i = 0; i < 6; i++) {
+      out += cs.charAt(h % cs.length);
+      h = Math.floor(h / cs.length) * 131 + 977;
+    }
+    return out;
+  }
   function factoryOf(uid) {
     var h = hashOf(uid), f = FACTORY_POOL[h % FACTORY_POOL.length];
     return { ranch: f.ranch, plant: f.plant, report: "IN-" + (2026000 + (h % 9000)) };
@@ -44,6 +55,7 @@
   /** 补齐老数据缺失的云端字段；返回补齐后的罐 */
   function ensureMeta(c) {
     if (c.queries === undefined || c.queries === null) c.queries = 1;
+    if (c.verified === undefined) c.verified = true;   // 老数据不再要求激活
     if (!c.producedAt) {
       var t = c.made ? Date.parse(c.made + "T00:00:00") : NaN;
       c.producedAt = (isNaN(t) ? Date.now() - 20 * DAY : t) + 2 * DAY;
@@ -71,7 +83,8 @@
       producedAt: producedTs,
       ranch: f.ranch, plant: f.plant, report: f.report,
       queries: 0,
-      openedAt: null, archived: false, archivedAt: null, reason: null
+      openedAt: null, archived: false, archivedAt: null, reason: null,
+      verified: true
     };
   }
   function normalizeCode(c) {
@@ -316,7 +329,7 @@
   /* ---------------- 识别 ---------------- */
   function startScan() {
     clearTimeout(scan.timer);
-    scan.phase = "scanning"; scan.code = null; scan.kind = "";
+    scan.phase = "scanning"; scan.code = null; scan.kind = ""; scan.attempt = 0;
     nfc(true); render();
     if (!hasNativeNfc()) {
       scan.timer = setTimeout(function () {
@@ -392,7 +405,7 @@
       producedAt: madeTs + 2 * DAY,
       openedAt: null, archived: false, archivedAt: null, reason: null, queries: 0
     };
-    ensureMeta(c);
+    c.verified = true;
     S.cans.unshift(c);
     save(); stopScan();
     toast("已添加这一罐", c.uid + (c.batch ? " · 批次 " + c.batch : "") +
@@ -441,7 +454,7 @@
           cam.detector = new window.BarcodeDetector({
             formats: ["qr_code", "ean_13", "code_128", "code_39", "data_matrix"]
           });
-          $("scanHint").textContent = "把罐身二维码放入框内";
+          $("scanHint").textContent = "把罐盖上的二维码放入框内";
           loop();
         } catch (e) {
           cam.detector = null;
@@ -495,8 +508,8 @@
   function manualInput() {
     showModal({
       tone: "", ico: "⌨",
-      title: "手动输入罐身短码",
-      body: "二维码磨损或摄像头不可用时使用。短码印在罐身二维码下方。",
+      title: "手动输入罐盖短码",
+      body: "二维码磨损或摄像头不可用时使用。短码印在罐盖金属面的二维码下方。",
       input: { placeholder: "例如 04A29F", maxlength: 16 },
       acts: [
         { label: "确认", onClick: function () {
@@ -655,25 +668,29 @@
           '<button class="btn ghost" id="scanAgain">重新识别</button>';
       } else {
         left += "<h3>识别到新的一罐</h3>" +
-          "<p>把它加入你的奶粉列表，之后可以单独记录它的开罐时间。</p>" +
+          "<p>输入罐盖上的 6 位激活码，确认这一罐是真品、且与罐盖属于同一罐。</p>" +
           '<div class="foundn"><div class="lab">新罐码</div><div class="u">' + esc(scan.code.uid) + "</div>" +
           (scan.code.batch ? '<div class="m">批次 ' + esc(scan.code.batch) + "</div>" : "") + "</div>" +
-          '<button class="btn accent" id="scanAdd">添加到我的奶粉</button>' +
-          '<button class="btn ghost" id="scanAgain">重新识别</button>';
+          '<input class="minput" id="actInput" placeholder="激活码 6 位" maxlength="6" ' +
+          'autocomplete="off" spellcheck="false">' +
+          '<button class="btn accent" id="scanActivate">验证并添加</button>' +
+          '<button class="btn ghost" id="scanAgain">重新识别</button>' +
+          '<div class="alert dim">激活码印在<b>罐盖金属面</b>的二维码下方。' +
+          "换盖的罐会输不对这个码 —— 这是防换盖的关键一步。</div>";
       }
     } else if (st === "scanning") {
       left += "<h3>正在识别…</h3><p>请保持手机贴近罐盖顶部，不要移开。</p>" +
         '<button class="btn ghost" id="scanCancel">取消</button>';
     } else {
       left += "<h3>碰一碰罐盖，或扫码</h3>" +
-        "<p>NFC 标签位于塑料盖中央；也可以调用摄像头扫罐身二维码。</p>" +
+        "<p>NFC 标签位于塑料盖中央；也可以调用摄像头扫罐盖金属面的二维码。</p>" +
         '<button class="btn lg" id="scanStart">开始识别（NFC）</button>' +
         '<button class="btn line" id="scanCam">扫码识别（摄像头）</button>' +
         '<button class="btn ghost" id="scanSim">' +
         (hasNativeNfc() ? "没有标签？手动登记一罐" : "模拟识别到标签（演示）") + "</button>";
     }
     left += "</div>" +
-      '<div class="link" id="scanCode"><span>手动输入罐身短码</span><span class="arw">›</span></div>';
+      '<div class="link" id="scanCode"><span>手动输入罐盖短码</span><span class="arw">›</span></div>';
 
     var live = sortCans(liveCans());
     var right = '<div class="sect">我的奶粉（' + S.cans.length + '）</div>';
@@ -1069,8 +1086,8 @@
     { art: "rings", t: "碰一碰，就知道这罐奶粉开了多久",
       d: "撕开铝膜后碰一下罐盖，自动记录开罐时间并开始 28 天倒计时。不用记日子，也不用翻罐身小字。" },
     { art: "chips", t: "把奶粉加进列表",
-      d: "三种方式任选。家里有几罐就加几罐，每一罐各自独立计时。",
-      chips: ["碰一碰罐盖", "扫罐身二维码", "手动输入短码"] },
+      d: "碰一碰或扫罐盖二维码，再输入罐盖上的 6 位激活码。家里有几罐就加几罐，各自独立计时。",
+      chips: ["碰一碰罐盖", "扫罐盖二维码", "手动输入短码"] },
     { art: "ring", t: "记录开罐，全家人同步",
       d: "撕开封口膜后，点一次「记录开罐时间」就完成。邀请家人加入后，谁开的罐、还剩几天，大家看到的都一样。" },
     { art: "calc", t: "冲调不靠猜",
@@ -1321,7 +1338,28 @@
     if ((b = $("scanCode"))) b.onclick = manualInput;
     if ((b = $("scanCancel"))) b.onclick = function () { stopScan(); render(); };
     if ((b = $("scanAgain"))) b.onclick = startScan;
-    if ((b = $("scanAdd"))) b.onclick = function () { if (scan.code) addCan(scan.code); };
+    if ((b = $("scanActivate"))) b.onclick = function () {
+      if (!scan.code) return;
+      var inp = $("actInput");
+      var val = (inp ? inp.value : "").replace(/\s/g, "").toUpperCase();
+      var expect = actCodeOf(scan.code.raw || scan.code.uid);
+      if (val !== expect) {
+        scan.attempt = (scan.attempt || 0) + 1;
+        toast("激活码不正确",
+          scan.attempt >= 3
+            ? "已连续 " + scan.attempt + " 次错误。请核对罐盖金属面二维码下方的 6 位激活码。"
+            : "请核对罐盖金属面二维码下方的 6 位激活码。");
+        if (inp) { inp.value = ""; inp.focus(); }
+        return;
+      }
+      scan.attempt = 0;
+      addCan(scan.code);
+    };
+    var _ai = $("actInput");
+    if (_ai) {
+      _ai.onkeydown = function (e) { if (e.key === "Enter") $("scanActivate").click(); };
+      setTimeout(function () { try { _ai.focus(); } catch (e) {} }, 60);
+    }
     if ((b = $("scanLook"))) b.onclick = function () {
       var c = scan.hit; stopScan(); if (c) openCan(c.id); else render();
     };
@@ -1370,7 +1408,8 @@
       "<br>NFC：" + (hasNativeNfc() ? "原生硬件读取" : "模拟（浏览器）") +
       "<br>扫码：" + (("BarcodeDetector" in window) ? "支持" : "不支持，可手动输入") +
       "<br>罐总数：" + S.cans.length + "　·　在用 " + liveCans().length +
-      "　·　时间偏移 " + (S.dayOffset || 0) + " 天";
+      "　·　时间偏移 " + (S.dayOffset || 0) + " 天" +
+      "<br>待激活罐激活码：" + (scan.code ? actCodeOf(scan.code.raw || scan.code.uid) : "— 先识别一罐");
   };
   $("sheetScrim").onclick = closeSheet;
   $("btnGuide").onclick = function () { closeSheet(); showGuide(); };
