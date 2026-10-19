@@ -67,7 +67,7 @@
     return c;
   }
   function makeCan() {
-    var u = randHex(8), uid = u.slice(0, 4) + "…" + u.slice(6);
+    var u = randHex(8), uid = "…" + u.slice(-6);   // 统一显示后六位
     // 生产 → 出厂 → 今天：让「流通时长」有真实含义
     var madeTs = Date.now() - Math.round(12 + Math.random() * 26) * DAY;
     var producedTs = madeTs + Math.round(1 + Math.random() * 3) * DAY;
@@ -91,7 +91,9 @@
     var clean = String(c == null ? "" : c).replace(/[^0-9A-Za-z]/g, "").toUpperCase();
     if (!clean) return null;
     return {
-      uid: clean.length >= 8 ? clean.slice(0, 4) + "…" + clean.slice(-2) : clean,
+      // 罐码统一显示后六位：NFC 读到的 UID 通常 14 位十六进制，
+      // 全串既长又难核对，后六位与罐盖上的印刷码一致
+      uid: clean.length > 6 ? "…" + clean.slice(-6) : clean,
       raw: clean, batch: "", made: ""
     };
   }
