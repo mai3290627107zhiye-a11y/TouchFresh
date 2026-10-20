@@ -675,7 +675,6 @@ html[data-theme="dark"] .step{color:#9CC7EE}
 .calc-val b{font-size:1.6rem; font-weight:800}
 .calc-val i{font-size:.72rem; color:var(--muted); font-style:normal; margin-left:.15rem}
 
-.slider{width:100%; margin:0 0 .9rem; accent-color:var(--accent); height:28px}
 
 .calc-out{background:var(--navy); color:#fff; border-radius:13px;
   padding:.85rem .9rem; text-align:center}
@@ -741,3 +740,292 @@ html[data-theme="dark"] .myth .x{color:#E8A79C}
 /* 云端档案标记 */
 .kv .v.cloudtag{color:var(--teal); font-weight:600}
 .kv .v i{font-style:normal; font-size:.66rem; color:var(--muted); margin-left:.22rem}
+
+
+/* ============================================================
+   无障碍：焦点可见（始终生效，屏幕阅读器与键盘用户依赖它）
+   ============================================================ */
+:focus-visible{
+  outline:3px solid var(--navy);
+  outline-offset:2px;
+  border-radius:6px;
+}
+.tab-btn:focus-visible, .rail-btn:focus-visible{ outline-offset:-3px; }
+
+/* 开关：无障碍模式 */
+.sw{
+  width:54px; height:32px; flex:0 0 auto; border:0; padding:0;
+  border-radius:16px; background:var(--rule); position:relative;
+  cursor:pointer; transition:background .18s ease;
+}
+.sw span{
+  position:absolute; top:3px; left:3px; width:26px; height:26px;
+  border-radius:50%; background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.22);
+  transition:transform .18s ease;
+}
+.sw[aria-checked="true"]{ background:var(--teal); }
+.sw[aria-checked="true"] span{ transform:translateX(22px); }
+.sw:focus-visible{ outline:3px solid var(--navy); outline-offset:3px; }
+
+.a11yrow{
+  display:flex; align-items:center; gap:.9rem;
+  padding:.9rem 1rem; margin-bottom:.7rem;
+  background:var(--card); border:1px solid var(--rule); border-radius:var(--r);
+}
+.a11yrow .a11ytxt{ flex:1 1 auto; min-width:0; }
+.a11yrow .a11ytxt b{ display:block; font-size:.95em; color:var(--ink); }
+.a11yrow .a11ytxt i{
+  display:block; font-style:normal; font-size:.8em; color:var(--muted);
+  margin-top:.2rem; line-height:1.5;
+}
+
+/* ============================================================
+   无障碍模式开启时：更大的字、更强的对比、更大的点击区、关闭动效
+   ============================================================ */
+/* 浅色主题：把次要文字与分隔线加深，正文提到纯黑 */
+html[data-theme="light"] body.a11y,
+html:not([data-theme="dark"]) body.a11y{
+  --muted:#4E4941;
+  --rule:#A9A296;
+  --ink:#000000;
+  --pale:#E8E3DA;
+}
+/* 深色主题：反向——正文提到纯白，次要文字提亮，分隔线提亮 */
+html[data-theme="dark"] body.a11y{
+  --ink:#FFFFFF;
+  --muted:#CFC9BE;
+  --rule:#5E6976;
+  --pale:#232B35;
+  --card:#1C232D;
+  --navy-l:#22303F;
+}
+body.a11y .cancard{ padding:1rem; }
+body.a11y .cc-uid{ font-size:1.06em; font-weight:700; }
+body.a11y .cc-left b{ font-size:2.15em; line-height:1.02; }
+body.a11y .cc-left span{ font-size:.92em; line-height:1.25; }
+body.a11y .cc-left{ align-items:flex-start; }
+body.a11y .cc-body{ align-items:center; }
+body.a11y .cc-mid, body.a11y .cc-foot{ font-size:1.05em; }
+body.a11y .seal{ font-size:.95em; font-weight:800; letter-spacing:.02em; }
+body.a11y .btn{ min-height:52px; font-size:1.06em; }
+body.a11y .btn.big{ min-height:60px; }
+body.a11y .tab-btn{ min-height:66px; }
+body.a11y .tab-btn em{ font-size:.98em; font-weight:600; }
+body.a11y .rail-btn{ min-height:60px; }
+body.a11y .kv .k, body.a11y .kv .v{ font-size:1.06em; padding:.62rem 0; }
+body.a11y .sect{ font-size:.95em; letter-spacing:.08em; color:var(--ink); }
+body.a11y .rec{ min-height:64px; }
+body.a11y .rec .u{ font-size:1.06em; font-weight:700; }
+body.a11y .rec .m{ font-size:.95em; }
+body.a11y .tincan .l1{ font-size:1.15em; }
+body.a11y .tincan .l2{ font-size:.98em; }
+body.a11y .link{ min-height:50px; font-size:1.05em; }
+body.a11y .alert{ font-size:.98em; }
+body.a11y .minput{ font-size:1.06em; min-height:52px; }
+body.a11y .modal-title, body.a11y #modalTitle{ font-size:1.3em; }
+body.a11y #modalBody{ font-size:1.05em; }
+body.a11y *{
+  transition:none !important;
+  animation:none !important;
+}
+body.a11y .ring svg circle{
+  stroke-width:16;
+}
+
+/* 朗读按钮 */
+.speakbtn{
+  display:inline-flex; align-items:center; gap:.4rem;
+  min-height:44px; padding:0 1rem; margin-bottom:.8rem;
+  border:1.5px solid var(--navy); border-radius:999px;
+  background:var(--card); color:var(--navy);
+  font-size:.9em; font-weight:700; cursor:pointer;
+}
+body.a11y .speakbtn{ min-height:52px; font-size:1em; }
+.speakbtn:active{ transform:scale(.98); }
+
+
+/* ============================================================
+   设置页
+   ============================================================ */
+.setrow{
+  display:flex; align-items:center; gap:.85rem; width:100%;
+  padding:.95rem 1rem; margin-bottom:.55rem; text-align:left;
+  background:var(--card); border:1.5px solid var(--rule);
+  border-radius:var(--r); color:var(--ink); cursor:pointer;
+}
+.setrow[aria-pressed="true"]{
+  border-color:var(--navy); background:var(--navy-l);
+}
+body[data-theme="dark"] .setrow[aria-pressed="true"]{ background:rgba(255,255,255,.06); }
+.setrow .rd{
+  width:22px; height:22px; flex:0 0 auto; border-radius:50%;
+  border:2px solid var(--rule); position:relative;
+}
+.setrow[aria-pressed="true"] .rd{ border-color:var(--navy); }
+.setrow[aria-pressed="true"] .rd::after{
+  content:""; position:absolute; inset:4px; border-radius:50%; background:var(--navy);
+}
+.setrow .st{ flex:1 1 auto; min-width:0; }
+.setrow .st b{ display:block; font-size:.95em; }
+.setrow .st i{
+  display:block; font-style:normal; font-size:.78em; color:var(--muted);
+  margin-top:.18rem; line-height:1.45;
+}
+.backlink{
+  display:inline-flex; align-items:center; gap:.35rem; min-height:44px;
+  padding:0 .2rem; margin-bottom:.7rem; border:0; background:none;
+  color:var(--muted); font-size:.86em; cursor:pointer;
+}
+body.a11y .setrow{ padding:1.1rem 1rem; }
+body.a11y .setrow .st b{ font-size:1.05em; }
+body.a11y .setrow .st i{ font-size:.9em; }
+
+/* ============================================================
+   首次启动的模式选择
+   ============================================================ */
+.modepick{
+  position:fixed; inset:0; z-index:120; display:none;
+  align-items:center; justify-content:center; padding:1.2rem;
+  background:var(--paper);
+}
+.modepick.show{ display:flex; }
+.modepick-inner{ width:100%; max-width:520px; }
+.modepick h2{
+  font-size:1.35rem; margin:0 0 .4rem; color:var(--ink);
+}
+.modepick-sub{
+  margin:0 0 1.2rem; font-size:.88em; color:var(--muted); line-height:1.6;
+}
+.modecard{
+  display:block; width:100%; text-align:left; cursor:pointer;
+  padding:1.1rem 1.15rem; margin-bottom:.8rem;
+  background:var(--card); border:1.5px solid var(--rule);
+  border-radius:var(--r); color:var(--ink);
+}
+.modecard b{ display:block; font-size:1.02rem; margin-bottom:.3rem; }
+.modecard i{
+  display:block; font-style:normal; font-size:.82em;
+  color:var(--muted); line-height:1.55;
+}
+.modecard.a11y b{ font-size:1.18rem; }
+.modecard.a11y i{ font-size:.95em; }
+.modepick-note{
+  margin:.9rem 0 0; font-size:.78em; color:var(--muted); text-align:center;
+}
+
+
+/* 设置页里的布尔开关（语音播报） */
+.sw2{
+  width:48px; height:28px; flex:0 0 auto; border-radius:14px;
+  background:var(--rule); position:relative; transition:background .18s ease;
+}
+.sw2 i{
+  position:absolute; top:3px; left:3px; width:22px; height:22px;
+  border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.22);
+  transition:transform .18s ease;
+}
+.setrow[aria-pressed="true"] .sw2{ background:var(--teal); }
+.setrow[aria-pressed="true"] .sw2 i{ transform:translateX(20px); }
+body.a11y .setrow[aria-pressed="true"] .sw2 i{ transform:translateX(20px); }
+
+
+/* 顶栏齿轮：当前在设置页时高亮 */
+.icon-btn.is-on{
+  background:rgba(255,255,255,.16);
+  color:#FFFFFF;
+}
+body.a11y .icon-btn{ width:46px; height:46px; font-size:1.35rem; }
+
+
+/* ============================================================
+   无障碍模式：极简。只留能操作的与必须知道的，其余隐藏。
+   被隐藏的都是「解释性文字」与「重复信息」，不是数据。
+   ============================================================ */
+body.a11y .alert.dim,        /* 说明性提示条 */
+body.a11y .tincan .l2,       /* 标题下的副说明 */
+body.a11y .fam .r,           /* 家人角色描述 */
+body.a11y .cc-foot,          /* 卡片底部：品牌 / 批次 */
+body.a11y .rec .m,           /* 记录行副行 */
+body.a11y .chip,             /* 顶栏 NFC 标识 */
+body.a11y .a11y-hide{        /* 首页总览三项 */
+  display:none !important;
+}
+
+/* 更松的行距与留白，降低阅读密度 */
+body.a11y .sect{ margin-top:1.1rem; }
+body.a11y .col > * + *{ margin-top:.75rem; }
+body.a11y .kv{ padding:.7rem 0; }
+body.a11y .cancard{ padding:1.15rem 1rem; }
+
+
+/* ============================================================
+   深色主题修正（无障碍模式与其共用）
+   ============================================================ */
+
+/* 「朗读本页 / 朗读当前状态」：深色下用浅蓝，避免深藏青压深底 */
+html[data-theme="dark"] .speakbtn{
+  color:#9CC7EE; border-color:#3A5A7C; background:var(--card);
+}
+
+/* 设置页选中态：深色下用亮蓝，否则深藏青在深底上几乎看不见 */
+html[data-theme="dark"] .setrow[aria-pressed="true"]{
+  border-color:#5B87B5;
+  background:rgba(127,178,227,.12);
+}
+html[data-theme="dark"] .setrow[aria-pressed="true"] .rd{ border-color:#7FB2E3; }
+html[data-theme="dark"] .setrow[aria-pressed="true"] .rd::after{ background:#7FB2E3; }
+
+/* 焦点描边在深色下也用亮蓝，否则描边本身看不见 */
+html[data-theme="dark"] :focus-visible{ outline-color:#7FB2E3; }
+
+/* 首次启动的模式卡片：浅色描边 + 可读的副文案 */
+html[data-theme="dark"] .modecard{ border-color:#3A4350; }
+html[data-theme="dark"] .modecard i{ color:#B9B3A8; }
+
+/* 说明性小字在深色下提亮 */
+html[data-theme="dark"] .alert.dim{ color:#B9B3A8; }
+
+
+/* 无障碍模式：整块移除，直接减少 TalkBack 的滑动次数。
+   被移除的是「说明、重复信息、长文指南」，不是数据与操作入口。 */
+body.a11y .a11y-extra{ display:none !important; }
+
+
+/* 碰一碰页（无障碍）：去掉装饰插画与说明段，只剩两个操作按钮 */
+body.a11y .scanstage .rings{ display:none; }
+body.a11y .scanstage p{ display:none; }
+body.a11y .scanstage{ padding:.4rem 0 0; }
+
+
+/* 冲调计算器（无障碍）：去掉解释段与滑杆。
+   滑杆在 TalkBack 下只能靠滑动盲调，不如 −／＋ 按钮明确。 */
+body.a11y .calc-ratio,
+body.a11y .calc-hint,
+body.a11y .calc-warn{ display:none !important; }
+body.a11y .calc{ padding-bottom:1rem; }
+
+
+/* 无障碍版引导不配插图：只留标题、一句话和按钮 */
+body.a11y .guide-art{ display:none !important; }
+body.a11y .guide-slide{
+  justify-content:flex-start;
+  padding:3.2rem 1.6rem 1rem;
+  gap:1.3rem;
+}
+body.a11y .guide-slide h2{ font-size:1.35rem; line-height:1.4; }
+body.a11y .guide-slide p{ font-size:1rem; line-height:1.7; }
+body.a11y .guide-dots{ display:none; }
+
+/* 无障碍引导：步骤号更清楚，正文更大 */
+body.a11y .guide-step{ font-size:.9rem; color:#9FB3C8; letter-spacing:.12em; }
+
+
+/* 无障碍模式：顶栏左侧的品牌与统计整块移除，只留右侧的设置入口 */
+body.a11y .ab-left{ display:none !important; }
+body.a11y .appbar{ justify-content:flex-end; }
+
+
+/* 无障碍模式不提供引导与导览，入口也一并隐藏 */
+body.a11y #btnGuide,
+body.a11y #btnTour{ display:none !important; }

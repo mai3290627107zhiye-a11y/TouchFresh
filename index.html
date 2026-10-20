@@ -21,23 +21,23 @@
 
   <!-- 平板 / 横屏：左侧导航栏 -->
   <aside class="rail" id="rail" aria-label="主导航">
-    <div class="rail-brand" title="一碰知鲜"><span class="mark"></span></div>
+    <div class="rail-brand" title="一碰知鲜"><span class="mark" aria-hidden="true"></span></div>
     <button class="rail-btn scan-rail" data-tab="scan">
-      <span class="ic">◎</span><em>碰一碰</em>
+      <span class="ic" aria-hidden="true">◎</span><em>碰一碰</em>
     </button>
     <div class="rail-sep"></div>
-    <button class="rail-btn" data-tab="home"><span class="ic">◍</span><em>状态</em></button>
-    <button class="rail-btn" data-tab="recipe"><span class="ic">☰</span><em>冲调</em></button>
-    <button class="rail-btn" data-tab="records"><span class="ic">▤</span><em>记录</em></button>
-    <button class="rail-btn" data-tab="family"><span class="ic">◔</span><em>家人</em></button>
+    <button class="rail-btn" data-tab="home"><span class="ic" aria-hidden="true">◍</span><em>状态</em></button>
+    <button class="rail-btn" data-tab="recipe"><span class="ic" aria-hidden="true">☰</span><em>冲调</em></button>
+    <button class="rail-btn" data-tab="records"><span class="ic" aria-hidden="true">▤</span><em>记录</em></button>
+    <button class="rail-btn" data-tab="family"><span class="ic" aria-hidden="true">◔</span><em>家人</em></button>
     <div class="rail-spacer"></div>
-    <button class="rail-btn" id="railTheme"><span class="ic">◐</span><em>主题</em></button>
+    <button class="rail-btn" data-tab="settings"><span class="ic" aria-hidden="true">⚙</span><em>设置</em></button>
   </aside>
 
   <!-- 顶栏 -->
   <header class="appbar">
     <div class="ab-left">
-      <span class="mark tiny"></span>
+      <span class="mark tiny" aria-hidden="true"></span>
       <div class="ab-text">
         <b>一碰知鲜</b>
         <i id="barHint">待开罐</i>
@@ -45,6 +45,7 @@
     </div>
     <div class="ab-right">
       <span class="chip" id="entryChip">NFC</span>
+      <button class="icon-btn" id="btnSettings" aria-label="设置" title="设置">⚙</button>
       <button class="icon-btn" id="btnDemo" aria-label="演示工具">⋯</button>
     </div>
   </header>
@@ -56,18 +57,18 @@
 
   <!-- 手机：底部导航（中间为「碰一碰」主行动） -->
   <nav class="tabbar" aria-label="主导航">
-    <button class="tab-btn" data-tab="home"><span class="ic">◍</span><em>状态</em></button>
-    <button class="tab-btn" data-tab="recipe"><span class="ic">☰</span><em>冲调</em></button>
+    <button class="tab-btn" data-tab="home"><span class="ic" aria-hidden="true">◍</span><em>状态</em></button>
+    <button class="tab-btn" data-tab="recipe"><span class="ic" aria-hidden="true">☰</span><em>冲调</em></button>
     <button class="tab-btn mid" data-tab="scan" aria-label="碰一碰">
-      <span class="fab">◎</span><em>碰一碰</em>
+      <span class="fab" aria-hidden="true">◎</span><em>碰一碰</em>
     </button>
-    <button class="tab-btn" data-tab="records"><span class="ic">▤</span><em>记录</em></button>
-    <button class="tab-btn" data-tab="family"><span class="ic">◔</span><em>家人</em></button>
+    <button class="tab-btn" data-tab="records"><span class="ic" aria-hidden="true">▤</span><em>记录</em></button>
+    <button class="tab-btn" data-tab="family"><span class="ic" aria-hidden="true">◔</span><em>家人</em></button>
   </nav>
 </div>
 
 <!-- 摄像头扫码 -->
-<div class="scanner" id="scanner">
+<div class="scanner" id="scanner" role="dialog" aria-modal="true" aria-label="扫码识别">
   <video id="scanVideo" playsinline autoplay muted></video>
   <div class="scan-mask"><div class="scan-frame"><i></i></div></div>
   <div class="scan-hint" id="scanHint">把罐身二维码放入框内</div>
@@ -78,7 +79,7 @@
 </div>
 
 <!-- 通用弹窗（重复识别警告等） -->
-<div class="modal" id="modal">
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="modal-card">
     <div class="modal-ico" id="modalIco">!</div>
     <h3 id="modalTitle">标题</h3>
@@ -87,10 +88,27 @@
   </div>
 </div>
 
+<!-- 首次启动：选择模式 -->
+<div class="modepick" id="modePick" role="dialog" aria-modal="true" aria-labelledby="modeTitle">
+  <div class="modepick-inner">
+    <h2 id="modeTitle">选择使用模式</h2>
+    <p class="modepick-sub">随时可以在「设置」里更改，两种模式看到的数据完全一样。</p>
+    <button class="modecard" id="modeNormal" aria-describedby="modeNormalD">
+      <b>普通模式</b>
+      <i id="modeNormalD">默认界面。文字与按钮常规大小，适合多数人。</i>
+    </button>
+    <button class="modecard a11y" id="modeA11y" aria-describedby="modeA11yD">
+      <b>无障碍模式</b>
+      <i id="modeA11yD">放大文字与按钮、增强对比、关闭动效，并提供朗读。适合视力、肢体或认知障碍使用者。</i>
+    </button>
+    <p class="modepick-note">稍后在「家人 → 设置」里也能改。</p>
+  </div>
+</div>
+
 <!-- 使用引导 -->
-<div class="guide" id="guide">
+<div class="guide" id="guide" role="dialog" aria-modal="true" aria-label="使用引导">
   <div class="guide-top">
-    <span class="guide-brand"><span class="mark tiny"></span>一碰知鲜</span>
+    <span class="guide-brand"><span class="mark tiny" aria-hidden="true"></span>一碰知鲜</span>
     <button class="guide-skip" id="guideSkip">跳过</button>
   </div>
   <div class="guide-viewport" id="guideViewport">
@@ -106,7 +124,7 @@
 </div>
 
 <!-- 界面操作导览（聚光灯） -->
-<div class="tour" id="tour">
+<div class="tour" id="tour" role="dialog" aria-label="界面导览">
   <div class="tour-hole" id="tourHole"></div>
   <div class="tour-tip" id="tourTip">
     <div class="tour-step" id="tourStep">1 / 5</div>
@@ -146,8 +164,8 @@
   </section>
 </div>
 
-<div class="toast" id="toast"></div>
-<div class="nfsplash" id="splash"><span class="mark big"></span></div>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<div class="nfsplash" id="splash"><span class="mark big" aria-hidden="true"></span></div>
 
 <script src="app.js"></script>
 </body>

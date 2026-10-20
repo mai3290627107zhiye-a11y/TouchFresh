@@ -10,7 +10,7 @@
   "use strict";
 
   var KEY = "touchfresh.v4";
-  var BUILD = "2026.10.19-b5";   // 每次改动前端就更新：用来一眼认出旧缓存
+  var BUILD = "2026.10.20-b16";   // 每次改动前端就更新：用来一眼认出旧缓存
   var SHELF = 28;                       // 品牌建议：开罐后 4 周内用完
   var DAY = 86400000;
 
@@ -100,6 +100,7 @@
   }
 
   var S = load();
+  var setReturn = "family";   // 从哪个页面进的设置，返回时回到那里
   var scan = { phase: "idle", code: null, kind: "", timer: null };
   var detailId = null;
   var cam = { stream: null, raf: null, detector: null, active: false, track: null };
@@ -110,6 +111,7 @@
       cans: [], brand: "××品牌", seg: "1 段", weight: "900g",
       ranch: "内蒙古 · 乌兰察布牧场", plant: "天津 · 三厂",
       dayOffset: 0, entry: "NFC", tab: "home", theme: "", onboarded: false, toured: false,
+      a11y: false, voice: false,
       scoopMl: 60, scoopG: 8.8, calcMode: "water", calcWater: 120, calcScoop: 2, milkAt: null
     };
   }
@@ -248,6 +250,7 @@
   function toast(title, body) {
     var t = $("toast");
     t.innerHTML = "<b>" + esc(title) + "</b>" + esc(body || "");
+    if (S.voice) speak(title + "。" + (body || ""));
     t.classList.add("show");
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { t.classList.remove("show"); }, 3800);
@@ -540,11 +543,44 @@
     if (c) { c.queries = (c.queries || 0) + 1; save(); }   // 一次溯源查询
     detailId = id; go("records");
   }
+  function isoDay(d) {
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  /* 记录开罐时间：允许补记过去的日期。
+     半夜开罐顾不上记录是常态——不要求用户在那个时刻做任何事，
+     想起来时再补，倒计时按补记的日期起算。 */
   function recordOpen(id) {
     var c = byId(id); if (!c) return;
-    c.openedAt = Date.now(); c.archived = false; c.reason = null; c.archivedAt = null;
-    save(); askNotify(); render();
-    toast("开罐时间已记录", c.uid + " 已开始 28 天倒计时。");
+    var today = isoDay(new Date());
+    showModal({
+      tone: "info", ico: "?",
+      title: "这罐是什么时候开的？",
+      body: "半夜开罐顾不上记录也没关系——想起来时再补，日期可以选回过去，倒计时会按那天起算。",
+      fields: [{ label: "开罐日期", id: "openDate", type: "date", value: today }],
+      acts: [
+        { label: "确定", onClick: function () {
+            var el = $("mf_openDate");
+            var v = el ? el.value : "";
+            var ts;
+            if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+              var a = v.split("-");
+              ts = new Date(+a[0], +a[1] - 1, +a[2], 9, 0, 0).getTime();
+            } else {
+              ts = Date.now();
+            }
+            if (ts > Date.now()) ts = Date.now();
+            c.openedAt = ts; c.archived = false; c.reason = null; c.archivedAt = null;
+            save(); hideModal(); askNotify(); render();
+            var dd = Math.floor((Date.now() - ts) / 86400000);
+            toast("开罐时间已记录",
+              dd > 0 ? c.uid + " 已开罐 " + dd + " 天，倒计时按 " + v + " 起算。"
+                     : c.uid + " 已开始 28 天倒计时。");
+          } },
+        { label: "取消", style: "ghost", onClick: function () { hideModal(); } }
+      ]
+    });
   }
   function archiveCan(id) {
     var c = byId(id); if (!c || c.archived) return;
@@ -575,6 +611,132 @@
     return null;
   }
 
+  /* ---------------- 首次启动：选择模式 ---------------- */
+  function showModePick() {
+    var el = $("modePick");
+    if (!el) { showGuide(); return; }
+    el.classList.add("show");
+    var first = $("modeNormal");
+    if (first) try { first.focus(); } catch (e) {}
+  }
+  function pickMode(a11y) {
+    S.a11y = !!a11y;
+    save();
+    applyA11y();
+    var el = $("modePick");
+    if (el) el.classList.remove("show");
+    render();
+    setTimeout(showGuide, 160);
+  }
+
+  /* ---------------- 无障碍模式 ---------------- */
+  /* 面向残障人士：放大的字、更强的对比、更大的点击区、关闭动效，
+     并提供一个朗读入口，供低视力或读写困难的使用者用听的。 */
+  function applyA11y() {
+    if (document.body) {
+      document.body.classList.toggle("a11y", !!S.a11y);
+      document.documentElement.setAttribute("data-a11y", S.a11y ? "on" : "off");
+    }
+  }
+
+  /* 每个页面用一句话说清楚「这是什么页、现在最要紧的信息」，
+     供语音播报与朗读按钮共用。 */
+  function pageSummary(tab) {
+    var live = sortCans(liveCans());
+    if (tab === "home") {
+      if (!live.length) return "状态页。现在没有在用的奶粉。可以碰一碰罐盖，或者扫码，把新买的奶粉加进来。";
+      var c = live[0], st = statusOf(c), n = days(c);
+      var t = "状态页。现在有 " + live.length + " 罐在用。";
+      t += "最需要留意的是罐码 " + sayCode(c.uid) + "，";
+      if (st.key === "sealed") t += "还没有开罐。";
+      else if (st.key === "expired") t += "已经开罐 " + n + " 天，超过建议期限。";
+      else t += "已经开罐 " + n + " 天，还剩 " + st.left + " 天。";
+      return t;
+    }
+    if (tab === "records") {
+      if (detailId) {
+        var d = byId(detailId);
+        if (d) {
+          var dst = statusOf(d), dn = days(d);
+          var r = "罐详情。罐码 " + sayCode(d.uid) + "，批次 " + d.batch + "，生产日期 " + d.made + "。";
+          if (d.openedAt) r += "开罐于 " + fmtYMD(new Date(d.openedAt)) + "，已开 " + dn + " 天，";
+          if (dst.key === "expired") r += "已经过期。";
+          else if (dst.key === "sealed") r += "还没有开罐。";
+          else r += "还剩 " + dst.left + " 天。";
+          if (d.report) r += "检验报告号 " + sayCode(d.report) + "。";
+          return r;
+        }
+      }
+      var all = S.cans.length;
+      if (!all) return "记录页。现在还没有任何记录。";
+      return "记录页。共有 " + all + " 条记录，其中 " + live.length + " 罐在用。";
+    }
+    if (tab === "recipe") {
+      var w = S.calcWater || 0, sp = S.calcScoop || 0;
+      return "冲调页。当前设置是 " + S.scoopMl + " 毫升水配一勺。你现在算的是 " +
+        w + " 毫升水，需要 " + sp + " 勺，约 " +
+        (Math.round(sp * (S.scoopG || 0) * 10) / 10) + " 克。往下是六步冲调法和常见误区。";
+    }
+    if (tab === "scan") {
+      if (scan.phase === "found" && scan.code) {
+        return "碰一碰页。已经读到罐码 " + sayCode(scan.code.uid) + "，请确认后继续。";
+      }
+      return "碰一碰页。把手机靠近罐盖，或者点「扫码识别」用摄像头扫罐盖上的二维码。";
+    }
+    if (tab === "family") return "家人页。可以邀请家人一起看，也可以进入设置。";
+    if (tab === "settings") return "设置页。可以切换普通模式与无障碍模式、浅色与深色，以及语音播报。";
+    return "";
+  }
+
+  function announce(tab) {
+    if (!S.voice) return;
+    var t = pageSummary(tab || S.tab);
+    if (t) speak(t);
+  }
+
+  function ttsReady() {
+    return typeof window.speechSynthesis !== "undefined" &&
+           typeof window.SpeechSynthesisUtterance !== "undefined";
+  }
+
+  function speak(text) {
+    if (!ttsReady()) {
+      toast("这台设备不支持朗读", "可以打开系统的屏幕阅读器（TalkBack / VoiceOver）来听。");
+      return;
+    }
+    try {
+      window.speechSynthesis.cancel();
+      var u = new window.SpeechSynthesisUtterance(text);
+      u.lang = "zh-CN";
+      u.rate = 0.92;
+      window.speechSynthesis.speak(u);
+    } catch (e) {
+      toast("朗读没能启动", "可以改用系统的屏幕阅读器。");
+    }
+  }
+
+  function statusSummary() {
+    var live = sortCans(liveCans());
+    if (!live.length) return "现在没有在用的奶粉。可以碰一碰罐盖，或者扫码，把新买的奶粉加进来。";
+    var t = "现在有 " + live.length + " 罐在用。";
+    var c = live[0];
+    var st = statusOf(c), n = days(c);
+    t += "最需要留意的是罐码 " + sayCode(c.uid) + "，";
+    if (st.key === "sealed") {
+      t += "还没有开罐。";
+    } else if (st.key === "expired") {
+      t += "已经开罐 " + n + " 天，超过建议期限，已自动归档。";
+    } else {
+      t += "已经开罐 " + n + " 天，还剩 " + st.left + " 天。";
+    }
+    return t;
+  }
+
+  /* 罐码逐位念，避免被读成一串数字 */
+  function sayCode(uid) {
+    return String(uid || "").replace(/[^0-9A-Za-z]/g, "").split("").join(" ");
+  }
+
   /* ---------------- 视图 ---------------- */
   function ringSvg(pct, tone, big, sub) {
     var C = 2 * Math.PI * 54;
@@ -590,11 +752,15 @@
     var pct = st.key === "sealed" ? 0 : Math.min((n || 0) / SHELF, 1);
     var big = st.key === "sealed" ? "—" : (st.key === "expired" ? "0" : st.left);
     var sub = st.key === "sealed" ? "待开罐" : (st.key === "expired" ? "已过期" : "天后到期");
-    return '<button class="cancard" data-open="' + c.id + '" style="--i:' +
+    var _label = "罐码 " + sayCode(c.uid) + "，" + st.label +
+      (st.key === "sealed" ? "，还没有开罐" : "，已经开罐 " + (n || 0) + " 天") +
+      (st.key === "expired" || st.key === "sealed" ? "" : "，还剩 " + st.left + " 天") +
+      "。按下查看这一罐的详情。";
+    return '<button class="cancard" data-open="' + c.id + '" aria-label="' + esc(_label) + '" style="--i:' +
       Math.min(i || 0, 8) + '">' +
-      '<div class="cc-head"><span class="cc-uid">' + esc(c.uid) + "</span>" +
+      '<div class="cc-head" aria-hidden="true"><span class="cc-uid">' + esc(c.uid) + "</span>" +
       '<span class="seal ' + st.seal + '">' + st.label + "</span></div>" +
-      '<div class="cc-body">' +
+      '<div class="cc-body" aria-hidden="true">' +
         '<div class="cc-left"><b style="color:' + st.tone + '">' + big + "</b><span>" + sub + "</span></div>" +
         '<div class="cc-mid">' +
           '<div class="cc-bar"><i style="width:' + (pct * 100).toFixed(1) + '%;background:' + st.tone + '"></i></div>' +
@@ -602,7 +768,7 @@
             (c.openedAt ? "　·　建议 " + fmt(expiryOf(c)) + " 前用完" : "") + "</div>" +
         "</div>" +
       "</div>" +
-      '<div class="cc-foot">' + esc(S.brand) + " " + esc(S.seg) + " " + esc(S.weight) +
+      '<div class="cc-foot" aria-hidden="true">' + esc(S.brand) + " " + esc(S.seg) + " " + esc(S.weight) +
         "　·　批次 " + esc(c.batch || "—") + "</div>" +
       "</button>";
   }
@@ -619,7 +785,9 @@
     } else {
       var urgent = live[0], ust = statusOf(urgent);
       left = '<div class="acts" style="margin-bottom:.8rem">' +
-        '<button class="btn" id="homeScan">碰一碰 / 扫码添加新罐</button></div>';
+        '<button class="btn" id="homeScan">碰一碰 / 扫码添加新罐</button></div>' +
+        (S.a11y ? '<button class="speakbtn" id="homeSpeak" aria-label="朗读当前在用的奶粉状态">' +
+                  '🔊 朗读当前状态</button>' : '');
       if (ust.key === "near")
         left += '<div class="alert">' + esc(urgent.uid) + " 已临近到期，剩余 " + ust.left +
           " 天（建议 " + fmt(expiryOf(urgent)) + " 前用完）。</div>";
@@ -631,19 +799,21 @@
     var all = S.cans;
     var exp = all.filter(function (c) { return statusOf(c).key === "expired"; }).length;
     var arc = all.filter(function (c) { return statusOf(c).key === "archived"; }).length;
-    var right = '<div class="sect">总览</div>' +
+    var right = '<div class="a11y-hide">' +
+      '<div class="sect">总览</div>' +
       '<div class="kv"><span class="k">在用</span><span class="v">' + live.length + " 罐</span></div>" +
       '<div class="kv"><span class="k">已过期</span><span class="v">' + exp + " 罐</span></div>" +
       '<div class="kv"><span class="k">已归档</span><span class="v">' + arc + " 罐</span></div>" +
+      '</div>' +
       '<div class="link" id="goRecords"><span>查看全部记录与溯源</span><span class="arw">›</span></div>' +
       '<div class="sect">家人共享</div>' +
-      '<div class="fam"><div class="av">妈</div><div><div class="n">妈妈</div>' +
+      '<div class="fam a11y-extra"><div class="av">妈</div><div><div class="n">妈妈</div>' +
       '<div class="r">开罐记录人</div></div></div>' +
-      '<div class="fam"><div class="av t">奶</div><div><div class="n">奶奶</div>' +
+      '<div class="fam a11y-extra"><div class="av t">奶</div><div><div class="n">奶奶</div>' +
       '<div class="r">已加入 · 可查看剩余天数</div></div></div>' +
       '<div class="link" id="inInvite"><span>邀请家人</span><span class="arw">›</span></div>';
     return '<div class="grid2"><div class="col">' + left + "</div>" +
-           '<div class="col">' + right + "</div></div>";
+           '<div class="col a11y-extra">' + right + "</div></div>";
   }
 
   function vScan() {
@@ -689,26 +859,30 @@
         "<p>NFC 标签位于塑料盖中央；也可以调用摄像头扫罐盖金属面的二维码。</p>" +
         '<button class="btn lg" id="scanStart">开始识别（NFC）</button>' +
         '<button class="btn line" id="scanCam">扫码识别（摄像头）</button>' +
-        '<button class="btn ghost" id="scanSim">' +
+        '<button class="btn ghost a11y-extra" id="scanSim">' +
         (hasNativeNfc() ? "没有标签？手动登记一罐" : "模拟识别到标签（演示）") + "</button>";
     }
     left += "</div>" +
-      '<div class="link" id="scanCode"><span>手动输入罐盖短码</span><span class="arw">›</span></div>';
+      '<div class="link a11y-extra" id="scanCode"><span>手动输入罐盖短码</span><span class="arw">›</span></div>';
 
     var live = sortCans(liveCans());
     var right = '<div class="sect">我的奶粉（' + S.cans.length + '）</div>';
     if (!S.cans.length) right += '<div class="alert dim">列表为空。</div>';
     else sortCans(S.cans).slice(0, 6).forEach(function (c, i) {
       var p = statusOf(c);
-      right += '<button class="rec" data-open="' + c.id + '" style="--i:' + i + '">' +
-        '<span class="dot ' + p.dot + '"></span><span class="rinfo"><span class="ru">' + esc(c.uid) +
+      var _rl = "罐码 " + sayCode(c.uid) + "，" + p.label + "。批次 " + (c.batch || "无") +
+        "。按下查看详情。";
+      right += '<button class="rec" data-open="' + c.id + '" aria-label="' + esc(_rl) +
+        '" style="--i:' + i + '">' +
+        '<span class="dot ' + p.dot + '" aria-hidden="true"></span>' +
+        '<span class="rinfo" aria-hidden="true"><span class="ru">' + esc(c.uid) +
         '</span><span class="rm">' + esc(c.batch || "") + " · " + esc(p.note) + "</span></span>" +
-        '<span class="seal ' + p.seal + '">' + p.label + "</span></button>";
+        '<span class="seal ' + p.seal + '" aria-hidden="true">' + p.label + "</span></button>";
     });
     if (live.length) right += '<div class="alert dim">同时有 ' + live.length + " 罐在用，各自独立计时。</div>";
     right += '<div class="link" id="goRecords"><span>查看全部记录与溯源</span><span class="arw">›</span></div>';
     return '<div class="grid2"><div class="col">' + left + "</div>" +
-           '<div class="col">' + right + "</div></div>";
+           '<div class="col a11y-extra">' + right + "</div></div>";
   }
 
   function vRecords() {
@@ -864,8 +1038,7 @@
       ? '<div class="calc-row"><span class="calc-lab">水量</span>' +
         '<button class="step" data-w="-10">−</button>' +
         '<span class="calc-val"><b>' + ml + '</b><i>ml</i></span>' +
-        '<button class="step" data-w="10">+</button></div>' +
-        '<input type="range" class="slider" id="wRange" min="20" max="300" step="10" value="' + ml + '">'
+        '<button class="step" data-w="10">+</button></div>'
       : '<div class="calc-row"><span class="calc-lab">奶粉</span>' +
         '<button class="step" data-s="-0.5">−</button>' +
         '<span class="calc-val"><b>' + nf(sc) + '</b><i>平勺</i></span>' +
@@ -910,10 +1083,6 @@
         save(); updateCalc();
       };
     });
-    var rg = $("wRange");
-    if (rg) {
-      rg.oninput = function () { S.calcWater = parseInt(rg.value, 10); save(); updateCalc(); };
-    }
     var ed = $("calcEdit");
     if (ed) ed.onclick = editRatio;
   }
@@ -1012,7 +1181,7 @@
     var quick = [30, 60, 90, 120, 150, 180, 210, 240];
 
     var left = '<div id="calcWrap">' + calcHTML() + "</div>" +
-      '<div class="card">' +
+      '<div class="card a11y-extra">' +
         '<div class="sect" style="margin-top:0">常用水量速查</div>' +
         '<div class="qtable">' +
           quick.map(function (ml) {
@@ -1024,17 +1193,17 @@
         "</div>" +
         '<div class="alert dim">点任意一格可直接填进上面的计算器。</div>' +
       "</div>" +
-      '<div class="card">' +
+      '<div class="card a11y-extra">' +
         '<div class="sect" style="margin-top:0">刚冲好的奶</div>' +
         '<div id="milkWrap">' + milkHTML() + "</div>" +
       "</div>";
 
     var right =
-      '<div class="card"><div class="sect" style="margin-top:0">冲调六步</div>' +
+      '<div class="card a11y-extra"><div class="sect" style="margin-top:0">冲调六步</div>' +
         '<ol class="steps">' + steps.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol>" +
         '<div class="link" id="inVoice"><span>▶ 语音播报冲调步骤</span><span class="arw">›</span></div>' +
       "</div>" +
-      '<div class="card"><div class="sect" style="margin-top:0">按月龄喂哺量参考</div>' +
+      '<div class="card a11y-extra"><div class="sect" style="margin-top:0">按月龄喂哺量参考</div>' +
         '<div class="feedtab">' +
           '<div class="fh"><span>月龄</span><span>每次</span><span>每天次数</span></div>' +
           feeds.map(function (f) {
@@ -1044,12 +1213,12 @@
         "</div>" +
         '<div class="alert dim">只是常见参考值，宝宝个体差异很大 —— 以实际需求、「饿了就喂」和医生建议为准。</div>' +
       "</div>" +
-      '<div class="card"><div class="sect" style="margin-top:0">新手常见误区</div>' +
+      '<div class="card a11y-extra"><div class="sect" style="margin-top:0">新手常见误区</div>' +
         myths.map(function (m) {
           return '<div class="myth"><span class="x">✗</span><div><b>' + m[0] + "</b><br>" + m[1] + "</div></div>";
         }).join("") +
       "</div>" +
-      '<div class="card"><div class="sect" style="margin-top:0">消毒与储存</div>' +
+      '<div class="card a11y-extra"><div class="sect" style="margin-top:0">消毒与储存</div>' +
         '<div class="kv"><span class="k">奶瓶奶嘴</span><span class="v">沸水 5 分钟 / 蒸汽消毒</span></div>' +
         '<div class="kv"><span class="k">量勺</span><span class="v">干燥保存，勿水洗后直接入罐</span></div>' +
         '<div class="kv"><span class="k">奶粉开罐后</span><span class="v">阴凉干燥处 · ' + SHELF + " 天内用完</span></div>" +
@@ -1062,19 +1231,63 @@
            '<div class="col">' + right + "</div></div>";
   }
 
+  function vSettings() {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    return '<button class="backlink" id="setBack" aria-label="返回上一页">‹ 返回</button>' +
+      '<div class="tincan"><div class="l1">设置</div>' +
+      '<div class="l2">这里的选项随时可以改，只影响显示与操作方式，不改变任何数据。</div></div>' +
+
+      '<div class="sect">显示模式</div>' +
+      '<button class="setrow" id="setNormal" aria-label="普通模式。默认的文字与按钮大小。" aria-pressed="' + (S.a11y ? "false" : "true") + '">' +
+        '<span class="rd" aria-hidden="true"></span>' +
+        '<span class="st" aria-hidden="true"><b>普通模式</b><i>默认的文字与按钮大小。</i></span>' +
+      '</button>' +
+      '<button class="setrow" id="setA11y" aria-label="无障碍模式。放大文字与按钮、增强对比、关闭动效。" aria-pressed="' + (S.a11y ? "true" : "false") + '">' +
+        '<span class="rd" aria-hidden="true"></span>' +
+        '<span class="st" aria-hidden="true"><b>无障碍模式</b>' +
+        '<i>放大文字与按钮、增强对比、关闭动效，并在「状态」页提供朗读。' +
+        '适合视力、肢体或认知障碍使用者。</i></span>' +
+      '</button>' +
+
+      '<button class="setrow" id="setVoice" aria-label="语音播报。切换页面与操作结果都会念出来。" aria-pressed="' + (S.voice ? "true" : "false") + '">' +
+        '<span class="st"><b>语音播报</b>' +
+        '<i>切换页面与操作结果都会念出来，每个页面顶部也会出现「朗读本页」。</i></span>' +
+        '<span class="sw2" aria-hidden="true"><i></i></span>' +
+      '</button>' +
+      '<div class="alert dim">如果已经在用系统的屏幕阅读器（TalkBack / VoiceOver），' +
+      '请把这个开关关掉——两套声音会互相打断。</div>' +
+
+      '<div class="sect" style="margin-top:1.2rem">界面主题</div>' +
+      '<button class="setrow" id="setLight" aria-label="浅色主题" aria-pressed="' + (dark ? "false" : "true") + '">' +
+        '<span class="rd" aria-hidden="true"></span>' +
+        '<span class="st" aria-hidden="true"><b>浅色</b><i>浅底深字，白天更清晰。</i></span>' +
+      '</button>' +
+      '<button class="setrow" id="setDark" aria-label="深色主题" aria-pressed="' + (dark ? "true" : "false") + '">' +
+        '<span class="rd" aria-hidden="true"></span>' +
+        '<span class="st" aria-hidden="true"><b>深色</b><i>深底浅字，夜里看手机不刺眼，适合半夜冲奶。</i></span>' +
+      '</button>' +
+
+      '<div class="a11y-extra"><div class="sect" style="margin-top:1.2rem">关于</div>' +
+      '<div class="kv"><span class="k">版本</span><span class="v">' + BUILD + '</span></div>' +
+      '<div class="kv"><span class="k">提醒期限</span><span class="v">开罐后 ' + SHELF + ' 天</span></div>' +
+      '<div class="alert dim">本产品只提示期限，不判断奶粉是否变质。' +
+      '开封后请结合气味与性状自行判断。</div></div>';
+  }
+
   function vFamily() {
     return '<div class="grid2"><div class="col">' +
-      '<div class="tincan"><div class="l1">这些罐的家人</div>' +
+      '<div class="tincan a11y-extra"><div class="l1">这些罐的家人</div>' +
       '<div class="l2">任一成员碰触后，其余家人页面同步可见</div></div>' +
-      '<div class="fam"><div class="av">妈</div><div><div class="n">妈妈</div>' +
+      '<div class="fam a11y-extra"><div class="av">妈</div><div><div class="n">妈妈</div>' +
       '<div class="r">开罐记录人 · 主体账号</div></div></div>' +
-      '<div class="fam"><div class="av t">奶</div><div><div class="n">奶奶</div>' +
+      '<div class="fam a11y-extra"><div class="av t">奶</div><div><div class="n">奶奶</div>' +
       '<div class="r">已加入 · 可查看剩余天数与冲调指南</div></div></div>' +
-      '<div class="fam"><div class="av a">爸</div><div><div class="n">爸爸</div>' +
+      '<div class="fam a11y-extra"><div class="av a">爸</div><div><div class="n">爸爸</div>' +
       '<div class="r">待加入 · 已发送邀请</div></div></div>' +
       '<div class="link" id="inInvite"><span>生成邀请二维码</span><span class="arw">›</span></div>' +
+      '<div class="link" id="inSettings"><span>设置 · 显示模式与主题</span><span class="arw">›</span></div>' +
       "</div>" +
-      '<div class="col"><div class="sect">提醒通道</div>' +
+      '<div class="col a11y-extra"><div class="sect">提醒通道</div>' +
       '<div class="kv"><span class="k">微信服务通知</span><span class="v">已开启</span></div>' +
       '<div class="kv"><span class="k">系统通知</span><span class="v">App 内直达</span></div>' +
       '<div class="kv"><span class="k">日历 .ics</span><span class="v">可随时导出</span></div>' +
@@ -1122,22 +1335,30 @@
 
   function renderGuide() {
     var track = $("guideTrack");
-    track.innerHTML = GUIDE.map(function (s, i) {
+    if (gi > guideList().length - 1) gi = guideList().length - 1;
+    if (gi < 0) gi = 0;
+    track.innerHTML = guideList().map(function (s, i) {
       return '<section class="guide-slide">' +
         '<div class="guide-art">' + guideArt(s) + "</div>" +
-        '<div class="guide-step">' + (i + 1) + " / " + GUIDE.length + "</div>" +
+        '<div class="guide-step">' + (i + 1) + " / " + guideList().length + "</div>" +
         "<h2>" + esc(s.t) + "</h2><p>" + esc(s.d) + "</p></section>";
     }).join("");
     track.style.transform = "translateX(" + (-gi * 100) + "%)";
-    $("guideDots").innerHTML = GUIDE.map(function (_, i) {
+    $("guideDots").innerHTML = guideList().map(function (_, i) {
       return '<i class="' + (i === gi ? "on" : "") + '"></i>';
     }).join("");
-    var last = gi === GUIDE.length - 1;
+    var last = gi === guideList().length - 1;
     $("guideActs").className = "guide-acts" + (gi === 0 ? " one" : "");
     $("guidePrev").style.display = gi === 0 ? "none" : "";
     $("guideNext").textContent = last ? "开始使用" : "下一步";
   }
-  function showGuide() { gi = 0; $("guide").classList.add("show"); renderGuide(); }
+  function showGuide() {
+    if (S.a11y) {                 /* 无障碍模式不提供图文引导：直接视为已完成 */
+      S.onboarded = true; S.toured = true; save();
+      return;
+    }
+    gi = 0; $("guide").classList.add("show"); renderGuide();
+  }
   function hideGuide(done, chainTour) {
     $("guide").classList.remove("show");
     if (done) { S.onboarded = true; save(); }
@@ -1147,7 +1368,7 @@
   var guideOpen = function () { return $("guide").classList.contains("show"); };
 
   $("guideNext").onclick = function () {
-    if (gi < GUIDE.length - 1) { gi++; renderGuide(); }
+    if (gi < guideList().length - 1) { gi++; renderGuide(); }
     else hideGuide(true, true);          // 看完介绍 → 直接进入界面导览
   };
   $("guidePrev").onclick = function () { if (gi > 0) { gi--; renderGuide(); } };
@@ -1164,12 +1385,22 @@
       var dx = e.changedTouches[0].clientX - x0;
       x0 = null;
       if (Math.abs(dx) < 40) return;
-      if (dx < 0 && gi < GUIDE.length - 1) { gi++; renderGuide(); }
+      if (dx < 0 && gi < guideList().length - 1) { gi++; renderGuide(); }
       else if (dx > 0 && gi > 0) { gi--; renderGuide(); }
     }, { passive: true });
   })();
 
   /* ---------------- 界面操作导览（聚光灯） ---------------- */
+  /* 无障碍版引导：只讲三件事，每步一句话，不配插图 */
+  var GUIDE_A11Y = [
+    { t: "碰一下罐盖，就能记下开罐时间",
+      d: "不用写字，也不用记日子。碰一下之后，28 天倒计时自己开始。" },
+    { t: "一家人看的是同一份记录",
+      d: "谁开的罐、还剩几天，家人打开的页面都一样。" },
+    { t: "快到期会提醒，过期自动归档",
+      d: "过了期限会自动移到「记录」，溯源信息仍然能查。" }
+  ];
+
   var TOUR = [
     { sel: [".tab-btn.mid", ".rail-btn.scan-rail"], tab: null,
       t: "识别入口常驻在这里",
@@ -1190,6 +1421,18 @@
       t: "邀请家人，共享同一份倒计时",
       d: "家人加入后，谁开的罐、还剩几天，大家看到的都一样 —— 不用再口头问「这罐开了多久」。" }
   ];
+  /* 无障碍版导览：只指两处最常用的入口 */
+  var TOUR_A11Y = [
+    { sel: [".tab-btn.mid", ".rail-btn.scan-rail"], tab: null,
+      t: "识别入口在底部中间",
+      d: "凸起的这个按钮就是「碰一碰」，任何页面都能点。" },
+    { sel: [".cancard", "#homeScan"], tab: "home",
+      t: "状态页按紧急程度排",
+      d: "最上面那罐最需要留意，点开能看它的记录和溯源。" }
+  ];
+  var ti = 0;
+  function guideList() { return S.a11y ? GUIDE_A11Y : GUIDE; }
+  function tourList() { return S.a11y ? TOUR_A11Y : TOUR; }
   var ti = 0;
 
   function visibleEl(sels) {
@@ -1203,7 +1446,7 @@
     return null;
   }
   function positionTour() {
-    var step = TOUR[ti];
+    var step = tourList()[ti];
     if (!step) return;
     var el = visibleEl(step.sel);
     var hole = $("tourHole"), tip = $("tourTip");
@@ -1232,16 +1475,20 @@
     tip.style.top = top + "px";
   }
   function renderTour() {
-    var step = TOUR[ti];
-    $("tourStep").textContent = (ti + 1) + " / " + TOUR.length;
+    var step = tourList()[ti];
+    $("tourStep").textContent = (ti + 1) + " / " + tourList().length;
     $("tourTitle").textContent = step.t;
     $("tourBody").textContent = step.d;
     $("tourPrev").style.visibility = ti === 0 ? "hidden" : "visible";
-    $("tourNext").textContent = ti === TOUR.length - 1 ? "完成" : "下一步";
+    $("tourNext").textContent = ti === tourList().length - 1 ? "完成" : "下一步";
     if (step.tab && S.tab !== step.tab) go(step.tab);
     requestAnimationFrame(positionTour);
   }
   function startTour() {
+    if (S.a11y) {                 /* 聚光灯导览依赖视觉，无障碍模式下不提供 */
+      S.toured = true; save();
+      return;
+    }
     ti = 0;
     $("tour").classList.add("show");
     renderTour();
@@ -1253,7 +1500,7 @@
   function tourOpen() { return $("tour").classList.contains("show"); }
 
   $("tourNext").onclick = function () {
-    if (ti < TOUR.length - 1) { ti++; renderTour(); } else endTour(true);
+    if (ti < tourList().length - 1) { ti++; renderTour(); } else endTour(true);
   };
   $("tourPrev").onclick = function () { if (ti > 0) { ti--; renderTour(); } };
   $("tourSkip").onclick = function () { endTour(true); };
@@ -1266,11 +1513,17 @@
     var key = S.tab + "|" + (detailId || "");
     var moved = key !== viewKey;
     viewKey = key;
-    if (S.tab === "scan") v.innerHTML = vScan();
-    else if (S.tab === "recipe") v.innerHTML = vRecipe();
-    else if (S.tab === "records") v.innerHTML = vRecords();
-    else if (S.tab === "family") v.innerHTML = vFamily();
-    else v.innerHTML = vHome();
+    var html;
+    if (S.tab === "scan") html = vScan();
+    else if (S.tab === "recipe") html = vRecipe();
+    else if (S.tab === "records") html = vRecords();
+    else if (S.tab === "family") html = vFamily();
+    else if (S.tab === "settings") html = vSettings();
+    else html = vHome();
+    if (S.voice && S.tab !== "settings") {
+      html = '<button class="speakbtn" id="pageSpeak" aria-label="朗读本页">🔊 朗读本页</button>' + html;
+    }
+    v.innerHTML = html;
 
     var live = liveCans();
     if (!live.length) $("barHint").textContent = "暂无在用的罐";
@@ -1282,7 +1535,10 @@
     document.querySelectorAll("[data-tab]").forEach(function (b) {
       b.classList.toggle("is-on", b.getAttribute("data-tab") === S.tab);
     });
+    var _gs = $("btnSettings");
+    if (_gs) _gs.classList.toggle("is-on", S.tab === "settings");
     if (moved) {
+      announce(S.tab);
       v.classList.remove("view-anim");
       void v.offsetWidth;                  // 强制重排，让动画可重播
       v.classList.add("view-anim");
@@ -1341,6 +1597,42 @@
     if ((b = $("scanCode"))) b.onclick = manualInput;
     if ((b = $("scanCancel"))) b.onclick = function () { stopScan(); render(); };
     if ((b = $("scanAgain"))) b.onclick = startScan;
+    if ((b = $("homeSpeak"))) b.onclick = function () { speak(statusSummary()); };
+    if ((b = $("inSettings"))) b.onclick = function () { setReturn = S.tab; go("settings"); };
+    if ((b = $("btnSettings"))) b.onclick = function () { setReturn = S.tab; go("settings"); };
+    if ((b = $("pageSpeak"))) b.onclick = function () {
+      speak(pageSummary(S.tab) || "这个页面没有需要朗读的内容。");
+    };
+    if ((b = $("setVoice"))) b.onclick = function () {
+      S.voice = !S.voice;
+      save(); render();
+      if (S.voice) {
+        speak("语音播报已开启。切换页面和操作结果都会念出来。");
+      } else {
+        speak("语音播报已关闭。");
+      }
+    };
+    if ((b = $("setBack"))) b.onclick = function () { go(setReturn || "family"); };
+    if ((b = $("setNormal"))) b.onclick = function () {
+      if (!S.a11y) return;
+      S.a11y = false; save(); applyA11y(); render();
+      toast("已切换到普通模式", "显示恢复默认。");
+    };
+    if ((b = $("setA11y"))) b.onclick = function () {
+      if (S.a11y) return;
+      S.a11y = true; save(); applyA11y(); render();
+      toast("已切换到无障碍模式", "文字与按钮已放大，朗读入口在「状态」页。");
+    };
+    if ((b = $("setLight"))) b.onclick = function () {
+      if (document.documentElement.getAttribute("data-theme") === "light") return;
+      applyTheme("light"); render();
+      toast("已切换到浅色", "浅底深字，白天更清晰。");
+    };
+    if ((b = $("setDark"))) b.onclick = function () {
+      if (document.documentElement.getAttribute("data-theme") === "dark") return;
+      applyTheme("dark"); render();
+      toast("已切换到深色", "深底浅字，夜里看手机不刺眼。");
+    };
     if ((b = $("scanActivate"))) b.onclick = function () {
       if (!scan.code) return;
       var inp = $("actInput");
@@ -1389,9 +1681,6 @@
     if (m) m.setAttribute("content", t === "dark" ? "#0A1722" : "#16324F");
     S.theme = t; save();
   }
-  $("railTheme").onclick = function () {
-    applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
-  };
 
   /* ---------------- 扫码层 / 弹窗 ---------------- */
   $("scanClose").onclick = closeScanner;
@@ -1468,6 +1757,9 @@
   };
 
   /* ---------------- 导航 / 返回键 ---------------- */
+  if ($("modeNormal")) $("modeNormal").onclick = function () { pickMode(false); };
+  if ($("modeA11y")) $("modeA11y").onclick = function () { pickMode(true); };
+
   document.querySelectorAll(".tab-btn, .rail-btn[data-tab]").forEach(function (b) {
     b.onclick = function () { go(b.getAttribute("data-tab")); };
   });
@@ -1522,7 +1814,7 @@
     if (q.tab) S.tab = q.tab;
     if (q.tour !== undefined) {
       // 演示：直接打开界面导览的第 N 步
-      var n3 = Math.max(0, Math.min(parseInt(q.tour, 10) || 0, TOUR.length - 1));
+      var n3 = Math.max(0, Math.min(parseInt(q.tour, 10) || 0, tourList().length - 1));
       setTimeout(function () { startTour(); ti = n3; renderTour(); }, 520);
     }
     return q;
@@ -1532,8 +1824,9 @@
   (function boot() {
     var deep = applyDeepLink();
     var t = (deep && deep.theme) || S.theme;
-    if (!t) t = (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+    if (!t) t = "light";   // 默认浅色（白底），不再跟随系统深色
     applyTheme(t);
+    applyA11y();
     if (deep && deep.tab) S.tab = deep.tab;
     if (S.tab === "records" && detailId) { /* 深链直接进详情 */ }
     sweep(true);
@@ -1543,7 +1836,7 @@
     setTimeout(function () {
       $("splash").classList.add("hide");
       document.documentElement.classList.add("ready");
-      if (!S.onboarded) setTimeout(showGuide, 280);
+      if (!S.onboarded) setTimeout(showModePick, 280);
     }, 420);
     setInterval(function () { sweep(); if (S.tab === "home" || S.tab === "records") render(); }, 60000);
     document.addEventListener("visibilitychange", function () {
