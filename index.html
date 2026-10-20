@@ -17,6 +17,8 @@
 </head>
 <body>
 
+<noscript>这个应用需要开启 JavaScript 才能使用。<br>请在浏览器设置里允许本站运行脚本后刷新。</noscript>
+
 <div class="app" id="app">
 
   <!-- 平板 / 横屏：左侧导航栏 -->
@@ -168,5 +170,27 @@
 <div class="nfsplash" id="splash"><span class="mark big" aria-hidden="true"></span></div>
 
 <script src="app.js"></script>
+<script>
+/* 兜底：如果 3 秒后启动画面还在，说明 app.js 没跑起来
+   （文件没上传、被缓存成了旧版、或语法损坏）。
+   这里直接撤掉启动画面并给出可执行的提示，避免一直卡在深色空屏。 */
+(function () {
+  setTimeout(function () {
+    var sp = document.getElementById("splash");
+    if (!sp || sp.classList.contains("hide")) return;
+    sp.classList.add("hide");
+    document.documentElement.classList.add("ready");
+    if (document.getElementById("bootErr")) return;
+    var box = document.createElement("div");
+    box.id = "bootErr";
+    box.innerHTML =
+      "<b>页面没有正常启动</b>" +
+      "<span>1. 先刷新一次；<br>" +
+      "2. 还不行就清除本站缓存（浏览器设置 → 清除数据 / 或在开发者工具里 Unregister Service Worker）；<br>" +
+      "3. 如果你是部署到服务器，确认 app.js 已完整上传（本站共 10 个文件）。</span>";
+    document.body.appendChild(box);
+  }, 3000);
+})();
+</script>
 </body>
 </html>

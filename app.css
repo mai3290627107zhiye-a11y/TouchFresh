@@ -1029,3 +1029,22 @@ body.a11y .appbar{ justify-content:flex-end; }
 /* 无障碍模式不提供引导与导览，入口也一并隐藏 */
 body.a11y #btnGuide,
 body.a11y #btnTour{ display:none !important; }
+
+
+/* 启动失败时的提示条（由 index.html 的兜底脚本注入） */
+#bootErr{
+  position:fixed; left:1rem; right:1rem; bottom:5.5rem; z-index:300;
+  padding:.95rem 1.05rem; border-radius:14px;
+  background:#8F2B1F; color:#fff;
+  box-shadow:0 10px 28px rgba(0,0,0,.35);
+}
+#bootErr b{ display:block; font-size:1rem; margin-bottom:.4rem; }
+#bootErr span{ display:block; font-size:.82rem; line-height:1.7; color:#F4DAD5; }
+
+/* 脚本被禁用时也给一句话，而不是空屏 */
+noscript{
+  position:fixed; inset:0; z-index:400; display:flex;
+  align-items:center; justify-content:center; padding:2rem;
+  background:var(--paper); color:var(--ink);
+  font-size:.95rem; line-height:1.7; text-align:center;
+}

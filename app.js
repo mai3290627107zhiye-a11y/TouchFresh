@@ -10,7 +10,7 @@
   "use strict";
 
   var KEY = "touchfresh.v4";
-  var BUILD = "2026.10.20-b16";   // 每次改动前端就更新：用来一眼认出旧缓存
+  var BUILD = "2026.10.20-b17";   // 每次改动前端就更新：用来一眼认出旧缓存
   var SHELF = 28;                       // 品牌建议：开罐后 4 周内用完
   var DAY = 86400000;
 
